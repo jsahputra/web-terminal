@@ -1,0 +1,124 @@
+<!doctype html>
+<head>
+<title>term.js</title>
+<!--
+  term.js
+  Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
+-->
+<style>
+  html {
+    background: #555;
+  }
+
+  h1 {
+    margin-bottom: 20px;
+    font: 20px/1.5 sans-serif;
+  }
+
+
+  .terminal {
+    float: left;
+    border: #000 solid 5px;
+    font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+    font-size: 11px;
+    color: #f0f0f0;
+    background: #000;
+  }
+
+  .terminal-cursor {
+    color: #000;
+    background: #f0f0f0;
+  }
+
+</style>
+</head>
+<body>
+<h1>term.js</h1>
+<a href="/quit">quit</a>
+<form><select id="session"></select></form>
+<button id="get_screenshot">Update Screenshot</button>
+<img src="" align="right" id="screenshot">
+<script src="/static/js/jquery-1.7.2.min.js"></script>
+<script src="/static/js/reconnecting-websocket.js"></script>
+<script src="/static/js/term.js"></script>
+<script>
+ 
+var term = new Terminal({
+  cols: 80,
+  rows: 24,
+  useStyle: true,
+  screenKeys: true
+});
+
+term.open(document.body);
+
+term.on('title', function(title) {
+  document.title = title;
+});
+
+function connect(session_id, proto) {
+  if (window.shell) {
+    window.shell.close();
+    window.shell = null;
+  }
+  term.reset();
+  term.write('\x1b[31mConnecting to '+session_id+'\x1b[m\r\n');
+  if (window.MozWebSocket) {
+    window.shell = new WebSocket("ws://"+location.host+"/client/"+session_id, proto);
+  } else {
+    window.shell = new WebSocket("ws://"+location.host+"/client/"+session_id, proto);
+  }
+  window.shell.onmessage = function (event) {
+    if (event.data.match(/^[&][{]/)) {
+      var data = JSON.parse(event.data.slice(1));
+      if ( data.action  === 'screenshot') {
+        $("img#screenshot").attr('src', data.uri);
+      }
+    } else {
+      term.write(event.data);
+    }
+  };
+  window.shell.onclose = function (event) {
+    window.shell = null;
+  };
+  setTimeout(function () { console.log("focus:"); $(".terminal").focus(); }, 10);
+}
+
+term.on('data', function(data) {
+  if (window.shell)
+    window.shell.send(data);
+});
+
+
+function getList() {
+  $.getJSON("/connections", function (data) {
+    var $session = $("#session");
+    $session.html('');
+
+    var opt = $("<option></option>").attr('value', "").text("-- Choose --");
+    $session.append(opt);
+  
+    for (var i = 0; i < data.length; i++) {
+      var opt = $("<option></option>").attr('value', data[i].id).text(data[i].id);
+      $session.append(opt);
+    }
+  });
+}
+
+setInterval(function () { getList() }, 10000);
+getList();
+
+$("#get_screenshot").on('click', function () {
+if (!window.shell) { return alert('Not connected'); }
+window.shell.send("&"+JSON.stringify({action: 'screenshot'}));
+});
+
+var $session = $("#session");
+$session.on('change', function (event) {
+  var id = $(event.target).val();
+  connect(id);
+});
+
+</script>
+</body>
+</html>
